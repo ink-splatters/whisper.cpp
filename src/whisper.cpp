@@ -6927,8 +6927,11 @@ int whisper_full_with_state(
     // calculate the maximum context budget for prompt history
     const int max_prompt_ctx = std::min(params.n_max_text_ctx, whisper_n_text_ctx(ctx)/2);
 
-    // track last timestamp kept in prompt context for seg_len_hint thinning
+    // seg_len_hint thins timestamp tokens in prompt_past1. Timestamp token ids
+    // are relative to each seek window, so track accepted timestamps in the same
+    // absolute 10 ms time base used by seek and segment timestamps.
     int last_prompt_ts = 0;
+    bool has_last_prompt_ts = false;
 
     // prepare prompt
     {
@@ -7618,33 +7621,36 @@ int whisper_full_with_state(
                 prompt_past1.insert(prompt_past1.end(), prompt.begin() + 1, prompt.end() - prompt_init.size());
             }
 
-            // Add newly decoded tokens to the rolling context
-            // When seg_len_hint is set, thin out timestamp tokens in the context to prevent
-            // the model from conditioning on frequent segment breaks (which causes
-            // progressively shorter segments)
+            // Add newly decoded tokens to the rolling context. When enabled,
+            // seg_len_hint thins timestamp tokens so dense prior segment
+            // boundaries do not bias later decoding toward shorter segments.
             if (!is_no_speech) {
-                const whisper_token token_beg = whisper_token_beg(ctx);
-                const whisper_token token_eot = whisper_token_eot(ctx);
-                // convert seg_len_hint from ms to 20ms timestamp steps
-                const int min_timestamp_gap = params.seg_len_hint / 20;
+                if (params.seg_len_hint <= 0) {
+                    // Hint disabled: preserve historical prompt context exactly.
+                    for (int i = 0; i < result_len; ++i) {
+                        prompt_past1.push_back(tokens_cur[i].id);
+                    }
+                } else {
+                    const whisper_token token_beg = whisper_token_beg(ctx);
+                    // Convert milliseconds to 10 ms seek units, rounded up.
+                    const int min_timestamp_gap = (params.seg_len_hint - 1) / 10 + 1;
 
-                for (int i = 0; i < result_len; ++i) {
-                    const whisper_token id = tokens_cur[i].id;
-                    if (id >= token_eot && id <= token_beg) {
-                        // special non-timestamp token (eot, sot, etc.) — skip
-                        continue;
-                    }
-                    if (min_timestamp_gap > 0 && id > token_beg) {
-                        // timestamp token — only keep if enough time since last one
-                        const int ts = id - token_beg;
-                        if (ts - last_prompt_ts >= min_timestamp_gap) {
-                            last_prompt_ts = ts;
-                            prompt_past1.push_back(id);
+                    for (int i = 0; i < result_len; ++i) {
+                        const whisper_token id = tokens_cur[i].id;
+
+                        if (id > token_beg) {
+                            // Timestamp ids are seek-relative; compare absolute times.
+                            const int ts = seek + 2*(id - token_beg);
+                            if (!has_last_prompt_ts || ts - last_prompt_ts >= min_timestamp_gap) {
+                                last_prompt_ts = ts;
+                                has_last_prompt_ts = true;
+                                prompt_past1.push_back(id);
+                            }
+                            continue;
                         }
-                        continue;
+
+                        prompt_past1.push_back(id);
                     }
-                    // regular text token (or timestamp when seg_len_hint=0) — always keep
-                    prompt_past1.push_back(id);
                 }
             }
 
