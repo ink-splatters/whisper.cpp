@@ -144,7 +144,7 @@ void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params & para
     fprintf(stderr, "  -d  N,     --duration N                [%-7d] duration of audio to process in milliseconds\n",   params.duration_ms);
     fprintf(stderr, "  -mc N,     --max-context N             [%-7d] maximum number of text context tokens to store\n", params.max_context);
     fprintf(stderr, "  -ml N,     --max-len N                 [%-7d] maximum segment length in characters\n",           params.max_len);
-    fprintf(stderr, "  -slh N,    --seg-len-hint N            [%-7d] target segment length in ms\n",                    params.seg_len_hint);
+    fprintf(stderr, "  -slh N,    --seg-len-hint N            [%-7d] timestamp context thinning interval in ms\n",      params.seg_len_hint);
     fprintf(stderr, "  -sow,      --split-on-word             [%-7s] split on word rather than on token\n",             params.split_on_word ? "true" : "false");
     fprintf(stderr, "  -bo N,     --best-of N                 [%-7d] number of best candidates to keep\n",              params.best_of);
     fprintf(stderr, "  -bs N,     --beam-size N               [%-7d] beam size for beam search\n",                      params.beam_size);
@@ -649,6 +649,12 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    if (params.seg_len_hint < 0) {
+        fprintf(stderr, "error: --seg-len-hint must be >= 0\n");
+        whisper_print_usage(argc, argv, params, sparams);
+        return 1;
+    }
+
     if (params.language != "auto" && whisper_lang_id(params.language.c_str()) == -1) {
         fprintf(stderr, "error: unknown language '%s'\n", params.language.c_str());
         whisper_print_usage(argc, argv, params, sparams);
@@ -838,6 +844,12 @@ int main(int argc, char ** argv) {
 
         whisper_params params = default_params;
         get_req_parameters(req, params);
+        if (params.seg_len_hint < 0) {
+            static constexpr char error_resp[] = "{\"error\":\"seg_len_hint must be >= 0\"}";
+            res.status = 400;
+            res.set_content(error_resp, sizeof(error_resp) - 1, "application/json");
+            return;
+        }
 
         std::string filename{audio_file.filename};
         printf("Received request: %s\n", filename.c_str());
