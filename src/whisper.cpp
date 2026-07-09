@@ -161,6 +161,17 @@ static std::string format(const char * fmt, ...) {
     return std::string(buf.data(), size);
 }
 
+static std::string whisper_backend_dev_label(ggml_backend_dev_t dev) {
+    const char * name = ggml_backend_dev_name(dev);
+    const char * description = ggml_backend_dev_description(dev);
+
+    if (description == nullptr || description[0] == '\0' || std::strcmp(name, description) == 0) {
+        return format("%s backend", name);
+    }
+
+    return format("%s backend [%s]", name, description);
+}
+
 //
 // ggml helpers
 //
@@ -1318,10 +1329,11 @@ static ggml_backend_t whisper_backend_init_gpu(const whisper_context_params & pa
         return nullptr;
     }
 
-    WHISPER_LOG_INFO("%s: using %s backend\n", __func__, ggml_backend_dev_name(dev));
+    const std::string dev_label = whisper_backend_dev_label(dev);
+    WHISPER_LOG_INFO("%s: using %s\n", __func__, dev_label.c_str());
     ggml_backend_t result = ggml_backend_dev_init(dev, nullptr);
     if (!result) {
-        WHISPER_LOG_ERROR("%s: failed to initialize %s backend\n", __func__, ggml_backend_dev_name(dev));
+        WHISPER_LOG_ERROR("%s: failed to initialize %s\n", __func__, dev_label.c_str());
     }
 
     return result;
@@ -1340,10 +1352,11 @@ static std::vector<ggml_backend_t> whisper_backend_init(const whisper_context_pa
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
         ggml_backend_dev_t dev = ggml_backend_dev_get(i);
         if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
-            WHISPER_LOG_INFO("%s: using %s backend\n", __func__, ggml_backend_dev_name(dev));
+            const std::string dev_label = whisper_backend_dev_label(dev);
+            WHISPER_LOG_INFO("%s: using %s\n", __func__, dev_label.c_str());
             ggml_backend_t backend = ggml_backend_dev_init(dev, nullptr);
             if (!backend) {
-                WHISPER_LOG_ERROR("%s: failed to initialize %s backend\n", __func__, ggml_backend_dev_name(dev));
+                WHISPER_LOG_ERROR("%s: failed to initialize %s\n", __func__, dev_label.c_str());
                 continue;
             }
             result.push_back(backend);
