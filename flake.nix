@@ -49,7 +49,7 @@
           module.imports = [dev];
         };
 
-        version = "1.9.1-unmerged-prs+20260726";
+        version = "1.9.1-unmerged-prs.20260803";
         src = builtins.path {
           path = ./.;
           name = "whisper-cpp";
