@@ -68,3 +68,9 @@ local.properties
 
 # AGENTS
 .pi/SYSTEM.md
+
+/.direnv
+
+# git-hooks.nix
+/.pre-commit-config.yaml
+/result
