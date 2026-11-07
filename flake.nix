@@ -49,7 +49,7 @@
           module.imports = [dev];
         };
 
-        version = "1.9.5-dev";
+        version = "1.9.5-dev.20261107";
         src = builtins.path {
           path = ./.;
           name = "whisper-cpp";
